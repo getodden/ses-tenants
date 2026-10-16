@@ -17,7 +17,12 @@ abstract class PersistentTestCase extends TestCase
 
     protected function defineEnvironment($app): void
     {
-        $app['config']->set('database.default', 'testing');
+        $connection = (string) env('SES_TESTS_DB', 'testing');
+        $app['config']->set('database.default', $connection);
+
+        // Set SES_TESTS_DB=pgsql or mariadb to run these tests on a server (a throwaway database named by SES_TESTS_DATABASE).
+        $app['config']->set('database.connections.pgsql', [...(array) $app['config']->get('database.connections.pgsql'), 'host' => '127.0.0.1', 'port' => 5432, 'username' => 'postgres', 'password' => '', 'database' => env('SES_TESTS_DATABASE', 'ses_tenants_test')]);
+        $app['config']->set('database.connections.mariadb', [...(array) $app['config']->get('database.connections.mariadb'), 'host' => '127.0.0.1', 'port' => 3306, 'username' => 'root', 'password' => '', 'database' => env('SES_TESTS_DATABASE', 'ses_tenants_test')]);
         $app['config']->set('ses-tenants.persistence.enabled', true);
         $app['config']->set('ses-tenants.persistence.owner_model', TestOwner::class);
         $app['config']->set('ses-tenants.enabled', true);
@@ -31,6 +36,7 @@ abstract class PersistentTestCase extends TestCase
     {
         parent::setUp();
 
+        $this->artisan('db:wipe')->run();
         $this->artisan('migrate')->run();
 
         Schema::create('test_owners', function (Blueprint $table) {
