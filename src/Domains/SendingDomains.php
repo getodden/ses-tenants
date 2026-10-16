@@ -116,7 +116,7 @@ class SendingDomains
         $max = (int) config('ses-tenants.domains.max_per_owner', 3);
 
         if (SendingDomain::query()->ownedBy($owner)->count() >= $max) {
-            throw new SesTenantsException("This account has reached its limit of {$max} sending domains.");
+            throw new SesTenantsException((string) trans('ses-tenants::messages.domain_limit', ['max' => $max]));
         }
 
         $limiter = 'ses-tenants:domain-adds:'.$owner->getMorphClass().':'.$owner->getKey();
