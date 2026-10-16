@@ -2,12 +2,15 @@
 
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\RateLimiter;
+use Odden\SesTenants\Contracts\AdoptsDomains;
 use Odden\SesTenants\Domains\DomainPolicy;
 use Odden\SesTenants\Domains\SendingDomains;
 use Odden\SesTenants\Events\DomainChanged;
 use Odden\SesTenants\Exceptions\SesTenantsException;
 use Odden\SesTenants\Identities\IdentityState;
+use Odden\SesTenants\Models\OwnerStatus;
 use Odden\SesTenants\Models\SendingDomain;
+use Odden\SesTenants\Tests\Support\TestOwner;
 
 function domains(): SendingDomains
 {
@@ -155,6 +158,21 @@ it('adopts an application-owned domain that already has an identity, and never d
     expect(domains()->remove($record))->toBeTrue()->and($this->ses->deleted)->toBe([])->and($this->ses->identities)->toHaveKey('own.example.com');
 });
 
+it('lists an owner under its own adopt key when it implements AdoptsDomains', function (): void {
+    $owner = new class extends TestOwner implements AdoptsDomains
+    {
+        public function sesAdoptKey(): string
+        {
+            return 'platform';
+        }
+    };
+    config(['ses-tenants.adopt' => ['platform' => ['own.example.com']]]);
+    app()->forgetInstance(SendingDomains::class);
+
+    expect(domains()->adoptAllowed($owner, 'own.example.com'))->toBeTrue()->and(domains()->adoptAllowed($owner, 'other.example.com'))->toBeFalse()
+        ->and(domains()->adoptAllowed($this->owner(), 'own.example.com'))->toBeFalse();
+});
+
 it('sets the stricter reputation policy while the owner is risky or a domain is warming up, and the normal one after', function (): void {
     $owner = $this->owner();
     $owner->risky = true;
@@ -188,7 +206,7 @@ it('lets go of everything an owner holds when it is deleted, and records what SE
 
     domains()->forgetOwner($owner);
 
-    expect(SendingDomain::query()->count())->toBe(0)
+    expect(SendingDomain::query()->count())->toBe(0)->and(OwnerStatus::query()->count())->toBe(0)
         ->and(DB::table('ses_orphaned_identities')->pluck('tenant_name', 'domain')->all())->toBe(['a.example.com' => 'owner-1', 'b.example.com' => 'owner-1']);
 
     $this->ses->failDelete = false;

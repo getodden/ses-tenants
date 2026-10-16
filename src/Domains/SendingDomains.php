@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Odden\SesTenants\Contracts\AdoptsDomains;
 use Odden\SesTenants\Contracts\SesOwner;
 use Odden\SesTenants\Dns\DnsRecords;
 use Odden\SesTenants\Events\DomainChanged;
@@ -48,7 +49,7 @@ class SendingDomains
     }
 
     /**
-     * The domains each owner (by key) may take over as they are, though they are reserved or already have an identity at SES:
+     * The domains each owner (by key, or by sesAdoptKey() when the owner implements AdoptsDomains) may take over as they are, though they are reserved or already have an identity at SES:
      * the application's own names, for its own account. They are never deleted at SES.
      *
      * @return array<string, list<string>>
@@ -83,7 +84,9 @@ class SendingDomains
     {
         $domain = DomainPolicy::canonical($input);
 
-        return $domain !== '' && in_array($domain, $this->adoptable()[(string) $owner->getKey()] ?? [], true);
+        $key = $owner instanceof AdoptsDomains ? $owner->sesAdoptKey() : (string) $owner->getKey();
+
+        return $domain !== '' && in_array($domain, $this->adoptable()[$key] ?? [], true);
     }
 
     /**
@@ -277,8 +280,8 @@ class SendingDomains
     }
 
     /**
-     * Let go of everything an owner holds at SES, for when the owner is deleted: its identities go and then its SES tenant.
-     * One SES will not release yet is recorded, so `ses-tenants:release-orphans` retries it.
+     * Let go of everything an owner holds, for when the owner is deleted: its identities go at SES and then its SES tenant, and
+     * its standing and usage rows are deleted. One SES will not release yet is recorded, so `ses-tenants:release-orphans` retries it.
      */
     public function forgetOwner(Model&SesOwner $owner): void
     {
@@ -291,6 +294,10 @@ class SendingDomains
         }
 
         $this->forgetTenant($owner->sesTenantName());
+
+        // Nothing of the owner's is kept: its standing and its usage go with it.
+        OwnerStatus::query()->ownedBy($owner)->delete();
+        DB::table('ses_usage')->where('owner_type', $owner->getMorphClass())->where('owner_id', $owner->getKey())->delete();
     }
 
     /**
