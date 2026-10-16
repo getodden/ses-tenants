@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\RateLimiter;
+use Odden\SesTenants\Contracts\AdoptsDomains;
 use Odden\SesTenants\Contracts\SesOwner;
 use Odden\SesTenants\Dns\DnsRecords;
 use Odden\SesTenants\Events\DomainChanged;
@@ -48,7 +49,7 @@ class SendingDomains
     }
 
     /**
-     * The domains each owner (by key) may take over as they are, though they are reserved or already have an identity at SES:
+     * The domains each owner (by key, or by sesAdoptKey() when the owner implements AdoptsDomains) may take over as they are, though they are reserved or already have an identity at SES:
      * the application's own names, for its own account. They are never deleted at SES.
      *
      * @return array<string, list<string>>
@@ -83,7 +84,9 @@ class SendingDomains
     {
         $domain = DomainPolicy::canonical($input);
 
-        return $domain !== '' && in_array($domain, $this->adoptable()[(string) $owner->getKey()] ?? [], true);
+        $key = $owner instanceof AdoptsDomains ? $owner->sesAdoptKey() : (string) $owner->getKey();
+
+        return $domain !== '' && in_array($domain, $this->adoptable()[$key] ?? [], true);
     }
 
     /**
@@ -113,7 +116,7 @@ class SendingDomains
         $max = (int) config('ses-tenants.domains.max_per_owner', 3);
 
         if (SendingDomain::query()->ownedBy($owner)->count() >= $max) {
-            throw new SesTenantsException("This account has reached its limit of {$max} sending domains.");
+            throw new SesTenantsException((string) trans('ses-tenants::messages.domain_limit', ['max' => $max]));
         }
 
         $limiter = 'ses-tenants:domain-adds:'.$owner->getMorphClass().':'.$owner->getKey();
@@ -277,8 +280,8 @@ class SendingDomains
     }
 
     /**
-     * Let go of everything an owner holds at SES, for when the owner is deleted: its identities go and then its SES tenant.
-     * One SES will not release yet is recorded, so `ses-tenants:release-orphans` retries it.
+     * Let go of everything an owner holds, for when the owner is deleted: its identities go at SES and then its SES tenant, and
+     * its standing and usage rows are deleted. One SES will not release yet is recorded, so `ses-tenants:release-orphans` retries it.
      */
     public function forgetOwner(Model&SesOwner $owner): void
     {
@@ -291,14 +294,26 @@ class SendingDomains
         }
 
         $this->forgetTenant($owner->sesTenantName());
+        $this->purgeOwnerRecords($owner);
     }
 
     /**
-     * Remember an identity that could not be removed.
+     * Delete what the package keeps for an owner: its domains, standing and usage. Nothing is done at SES; release the identities
+     * first (see {@see self::release()}), or use {@see self::forgetOwner()}.
+     */
+    public function purgeOwnerRecords(Model $owner): void
+    {
+        SendingDomain::query()->ownedBy($owner)->delete();
+        OwnerStatus::query()->ownedBy($owner)->delete();
+        DB::table('ses_usage')->where('owner_type', $owner->getMorphClass())->where('owner_id', $owner->getKey())->delete();
+    }
+
+    /**
+     * Remember an identity that could not be removed (one attempt has failed already).
      */
     public function recordOrphan(string $domain, ?string $tenantName): void
     {
-        DB::table('ses_orphaned_identities')->updateOrInsert(['domain' => $domain], ['tenant_name' => $tenantName, 'updated_at' => now(), 'created_at' => now()]);
+        DB::table('ses_orphaned_identities')->updateOrInsert(['domain' => $domain], ['tenant_name' => $tenantName, 'attempts' => 1, 'updated_at' => now(), 'created_at' => now()]);
     }
 
     /**
@@ -396,7 +411,7 @@ class SendingDomains
      * The owner's SES tenant has no use once its last domain is gone. Failing to delete it is harmless (an empty tenant sends
      * nothing, and the next domain re-uses it).
      */
-    private function releaseTenantIfUnused(SendingDomain $record): void
+    public function releaseTenantIfUnused(SendingDomain $record): void
     {
         if (SendingDomain::query()->where('owner_type', $record->owner_type)->where('owner_id', $record->owner_id)->exists()) {
             return;
@@ -406,7 +421,7 @@ class SendingDomains
         $name === null || $this->forgetTenant($name);
     }
 
-    private function forgetTenant(string $tenantName): void
+    public function forgetTenant(string $tenantName): void
     {
         try {
             $this->identities->deleteTenant($tenantName);
