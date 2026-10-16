@@ -294,8 +294,16 @@ class SendingDomains
         }
 
         $this->forgetTenant($owner->sesTenantName());
+        $this->purgeOwnerRecords($owner);
+    }
 
-        // Nothing of the owner's is kept: its standing and its usage go with it.
+    /**
+     * Delete what the package keeps for an owner: its domains, standing and usage. Nothing is done at SES; release the identities
+     * first (see {@see self::release()}), or use {@see self::forgetOwner()}.
+     */
+    public function purgeOwnerRecords(Model $owner): void
+    {
+        SendingDomain::query()->ownedBy($owner)->delete();
         OwnerStatus::query()->ownedBy($owner)->delete();
         DB::table('ses_usage')->where('owner_type', $owner->getMorphClass())->where('owner_id', $owner->getKey())->delete();
     }
