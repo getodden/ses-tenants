@@ -128,7 +128,7 @@ it('accepts the regional name on a certificate too', function (): void {
     expect(true)->toBeTrue();
 });
 
-it('refuses a certificate address that is not SNS in our own region, however close it looks', function (string $url): void {
+it('refuses a certificate address that is not SNS in the topic's region, however close it looks', function (string $url): void {
     [$key, $pem] = snsvCertificate();
     Http::fake(['*' => Http::response($pem)]);
 

@@ -9,7 +9,7 @@ use Odden\SesTenants\Exceptions\SnsException;
 use Throwable;
 
 /**
- * Proves an SNS HTTP message really came from Amazon SNS, for our own topic, before anything in it is read:
+ * Proves an SNS HTTP message really came from Amazon SNS, for a topic you configured, before anything in it is read:
  *
  *  - the signing certificate must be served by an sns.<region>.amazonaws.com host over HTTPS (never a URL the
  *    sender chose), and its public key must verify the signature over the canonical string of the message;
@@ -138,12 +138,12 @@ final class SnsVerifier
     {
         $parts = parse_url($url);
 
-        // The certificate comes from SNS in the region of our own topic, nothing else, and with no query, fragment or port.
+        // The certificate comes from SNS in the region of the configured topic, nothing else, and with no query, fragment or port.
         if ($region === null || ! self::isSnsUrl($url, $region) || ! preg_match('#^/SimpleNotificationService-[A-Za-z0-9]+\.pem$#', (string) ($parts['path'] ?? '')) || isset($parts['query']) || isset($parts['fragment'])) {
             throw new SnsException('Signing certificate is not served by Amazon SNS.');
         }
 
-        return Cache::remember('tenancy:sns-cert:'.hash('sha256', $url), 86400, function () use ($url): string {
+        return Cache::remember('ses-tenants:sns-cert:'.hash('sha256', $url), 86400, function () use ($url): string {
             try {
                 $response = Http::timeout(5)->get($url);
             } catch (Throwable) {
@@ -250,7 +250,7 @@ final class SnsVerifier
 
         foreach ($allowed as $suffix) {
             if ($host === $suffix || str_ends_with($host, '.'.$suffix)) {
-                return Cache::remember('tenancy:sns-issuer:'.hash('sha256', $match[1]), 86400, function () use ($match): ?string {
+                return Cache::remember('ses-tenants:sns-issuer:'.hash('sha256', $match[1]), 86400, function () use ($match): ?string {
                     try {
                         $body = Http::timeout(5)->get($match[1])->body();
                     } catch (Throwable) {
