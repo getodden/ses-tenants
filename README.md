@@ -4,7 +4,7 @@ Per-customer sending domains on Amazon SES for Laravel SaaS.
 
 One SES account, many customers, each sending from its own verified domain with its reputation kept apart from everyone else's.
 
-Status: **0.2, in development.** 0.1 is identities, SES tenants, the guarded transport, verified SNS events and DNS records. 0.2 adds an opt-in layer that keeps sending domains, usage, warm-up and reputation in your database.
+Status: **0.2.** 0.1 is identities, SES tenants, the guarded transport, verified SNS events and DNS records. 0.2 adds an opt-in layer that keeps sending domains, usage, warm-up and reputation in your database. It is used by [Odden Cloud](https://odden.io), in production and staging; the API is pre-1.0, so a minor version may still change it (see the releases).
 
 ## What it does
 
@@ -119,7 +119,7 @@ app(\Odden\SesTenants\Sns\SnsVerifier::class)->verify($request->json()->all()); 
 ## What it does not do yet
 
 - **Chain validation depends on the certificate's own CA Issuers address**, fetched only from `amazontrust.com` and `digicert.com` hosts. A chain that cannot be built is refused.
-- **Tested against mocked SES and one real SNS certificate**, not a full production account. It runs in production at [Odden Cloud](https://odden.io).
+- **Little real-traffic mileage yet.** The tests use a fake SES and one real SNS certificate. Odden Cloud runs it in production and staging, where the real SNS verification path (certificate chain included) has handled a live event, and one real verified sending domain has been exercised on staging; no customer's sending domains are on it in production yet.
 - The persistence layer is tested with a fake SES on SQLite, PostgreSQL and MariaDB (`SES_TESTS_DB=pgsql vendor/bin/pest`), not against a real account.
 - One owner model per application (`persistence.owner_model`).
 
