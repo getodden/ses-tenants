@@ -1,0 +1,5 @@
+providers:
+  - Odden\SesTenants\SesTenantsServiceProvider
+
+env:
+  - CACHE_STORE=array

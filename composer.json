@@ -1,0 +1,51 @@
+{
+    "name": "getodden/ses-tenants",
+    "description": "Per-customer sending domains on Amazon SES for Laravel SaaS: DKIM and MAIL FROM verification, SES tenants, a guarded transport and verified SNS events.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "ses", "amazon-ses", "email", "multi-tenant", "saas", "sns", "dkim"],
+    "homepage": "https://odden.io",
+    "support": {
+        "issues": "https://github.com/getodden/ses-tenants/issues",
+        "source": "https://github.com/getodden/ses-tenants"
+    },
+    "authors": [
+        {"name": "CaskStack, LLC", "homepage": "https://odden.io"}
+    ],
+    "require": {
+        "php": "^8.3",
+        "ext-openssl": "*",
+        "aws/aws-sdk-php": "^3.350",
+        "laravel/framework": "^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.32",
+        "orchestra/testbench": "^11.0",
+        "pestphp/pest": "^4.0 || ^5.0",
+        "pestphp/pest-plugin-laravel": "^4.0 || ^5.0"
+    },
+    "autoload": {
+        "psr-4": {"Odden\\SesTenants\\": "src/"}
+    },
+    "autoload-dev": {
+        "psr-4": {"Odden\\SesTenants\\Tests\\": "tests/"}
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "analyse": "vendor/bin/phpstan analyse",
+        "format": "vendor/bin/pint",
+        "lint": "vendor/bin/pint --test"
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["Odden\\SesTenants\\SesTenantsServiceProvider"]
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {"pestphp/pest-plugin": true}
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
