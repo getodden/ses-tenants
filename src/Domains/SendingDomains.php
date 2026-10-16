@@ -309,11 +309,11 @@ class SendingDomains
     }
 
     /**
-     * Remember an identity that could not be removed.
+     * Remember an identity that could not be removed (one attempt has failed already).
      */
     public function recordOrphan(string $domain, ?string $tenantName): void
     {
-        DB::table('ses_orphaned_identities')->updateOrInsert(['domain' => $domain], ['tenant_name' => $tenantName, 'updated_at' => now(), 'created_at' => now()]);
+        DB::table('ses_orphaned_identities')->updateOrInsert(['domain' => $domain], ['tenant_name' => $tenantName, 'attempts' => 1, 'updated_at' => now(), 'created_at' => now()]);
     }
 
     /**
