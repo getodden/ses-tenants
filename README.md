@@ -4,7 +4,7 @@ Per-customer sending domains on Amazon SES for Laravel SaaS.
 
 One SES account, many customers, each sending from its own verified domain with its reputation kept apart from everyone else's.
 
-Status: **0.1, in development.** Layer 1 only: identities, SES tenants, the guarded transport, verified SNS events and DNS records. Warm-up, reputation limits and the Eloquent models are planned for 0.2.
+Status: **0.2, in development.** 0.1 is identities, SES tenants, the guarded transport, verified SNS events and DNS records. 0.2 adds an opt-in layer that keeps sending domains, usage, warm-up and reputation in your database.
 
 ## What it does
 
@@ -14,6 +14,44 @@ Status: **0.1, in development.** Layer 1 only: identities, SES tenants, the guar
 - **Verified SNS events.** `SnsVerifier` proves an SNS message came from Amazon: region-pinned certificate host, subject and dates, a chain to an Amazon Trust Services or DigiCert root, your topic only, a recent timestamp, and SHA256 signatures (SHA1 optional).
 - **DNS records.** The DKIM CNAMEs, the bounce domain's MX and SPF, and a suggested DMARC record, with helpers for providers that add the zone themselves.
 - **Domain policy.** Refuses malformed names, free-mail and disposable providers, and domains you reserve.
+
+## Optional: domains, warm-up and reputation in your database (0.2)
+
+Turn on persistence and the package also keeps each owner's sending domains and how they are doing:
+
+- **Sending domains.** `SendingDomains::add()` claims the name, creates the identity, attaches it to the owner's SES tenant and returns the DNS records; `check()`, `remove()` and `dropUnverified()` move it through pending, verified and failed. A reserved or already-existing domain of your own can be adopted as it is and is never deleted at SES.
+- **Warm-up.** A new domain's first days have a daily ceiling that steps up (`Warmup::ceiling()`); what to do with bulk mail over it is yours (`Warmup::nextWindow()` names the next day).
+- **Reputation.** Hard-bounce and complaint rates over a rolling window warn an owner and then pause it, in your database and at SES, and are tighter while a domain warms up. Only you lift a pause; SES's own pause is followed in both directions.
+- **A send gate** that refuses a paused owner, asks your own `SendLimit`s (a plan, an allowance), keeps all owners under the account send rate, and counts what was sent.
+- **An events endpoint** for SES delivery events through SNS, verified before anything is read.
+- **Events, not notifications.** The package tells you with Laravel events (`DomainChanged`, `DomainStoppedWorking`, `SesEventReceived`, `SendingPaused`, `SendingResumed`, `ReputationWarning`, `MessagesSent`); you send the emails, write the audit log and apply suppressions.
+- **Commands** to schedule or run by hand: `ses-tenants:check-domains`, `ses-tenants:sync`, `ses-tenants:release-orphans`, `ses-tenants:pause`, `ses-tenants:resume` and `ses-tenants:warmup`.
+
+```dotenv
+SES_TENANTS_PERSISTENCE=true
+SES_TENANTS_OWNER_MODEL=App\Models\Team
+SES_TENANTS_OWNER_KEY=int          # or uuid, ulid: set it before the first migration
+SES_TENANTS_EVENTS_PATH=ses/events # the endpoint SNS posts to; empty registers no route
+```
+
+```php
+use Odden\SesTenants\Contracts\SesOwner;
+
+class Team extends Model implements SesOwner
+{
+    public function sesTenantName(): string { return "team-{$this->id}"; }
+
+    public function sesIsRisky(): bool { return $this->onTrial(); }
+}
+```
+
+```php
+$schedule->command('ses-tenants:check-domains')->everyFiveMinutes();
+$schedule->command('ses-tenants:sync')->hourly();
+$schedule->command('ses-tenants:release-orphans')->daily();
+```
+
+Run `php artisan migrate` (or publish the migrations first with `--tag=ses-tenants-migrations`). The tables are `ses_sending_domains`, `ses_usage`, `ses_domain_usage`, `ses_owner_status` and `ses_orphaned_identities`.
 
 ## Installation
 
@@ -82,7 +120,8 @@ app(\Odden\SesTenants\Sns\SnsVerifier::class)->verify($request->json()->all()); 
 
 - **Chain validation depends on the certificate's own CA Issuers address**, fetched only from `amazontrust.com` and `digicert.com` hosts. A chain that cannot be built is refused.
 - **Tested against mocked SES and one real SNS certificate**, not a full production account. It runs in production at [Odden Cloud](https://odden.io).
-- No models, warm-up or reputation limits yet (0.2).
+- The persistence layer is tested on SQLite with a fake SES; run your own migrations check on PostgreSQL or MySQL before relying on it.
+- One owner model per application (`persistence.owner_model`).
 
 ## License
 

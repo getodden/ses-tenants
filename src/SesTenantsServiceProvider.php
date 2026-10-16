@@ -6,12 +6,23 @@ use Aws\SesV2\SesV2Client;
 use Aws\Sts\StsClient;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
+use Odden\SesTenants\Console\CheckDomainsCommand;
+use Odden\SesTenants\Console\PauseCommand;
+use Odden\SesTenants\Console\ReleaseOrphansCommand;
+use Odden\SesTenants\Console\ResumeCommand;
+use Odden\SesTenants\Console\SyncTenantsCommand;
+use Odden\SesTenants\Console\WarmupCommand;
 use Odden\SesTenants\Contracts\NullSendGate;
 use Odden\SesTenants\Contracts\SendGate;
 use Odden\SesTenants\Domains\DomainPolicy;
+use Odden\SesTenants\Domains\SendingDomains;
 use Odden\SesTenants\Identities\NullIdentities;
 use Odden\SesTenants\Identities\SesIdentities;
 use Odden\SesTenants\Identities\SesV2Identities;
+use Odden\SesTenants\Reputation\Reputation;
+use Odden\SesTenants\Reputation\Usage;
+use Odden\SesTenants\Reputation\Warmup;
+use Odden\SesTenants\Sending\PersistentSendGate;
 use Odden\SesTenants\Sns\SnsVerifier;
 use Odden\SesTenants\Transport\TransportFactory;
 
@@ -53,14 +64,40 @@ class SesTenantsServiceProvider extends ServiceProvider
             array_values(array_map('strval', (array) $app['config']->get('ses-tenants.reserved_domains', []))),
         ));
 
-        $this->app->singletonIf(SendGate::class, NullSendGate::class);
+        $this->app->singleton(SendingDomains::class);
+        $this->app->singleton(Usage::class);
+        $this->app->singleton(Warmup::class);
+        $this->app->singleton(Reputation::class);
+
+        // The persistent gate once persistence is on, otherwise one that allows everything. Chosen when it is first asked for, so
+        // an application that binds its own SendGate (after this provider) replaces either.
+        $this->app->singleton(SendGate::class, fn ($app): SendGate => $this->persistent() ? $app->make(PersistentSendGate::class) : new NullSendGate);
     }
 
     public function boot(): void
     {
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'ses-tenants');
         $this->publishes([__DIR__.'/../config/ses-tenants.php' => config_path('ses-tenants.php')], 'ses-tenants-config');
+        $this->publishes([__DIR__.'/../database/migrations' => database_path('migrations')], 'ses-tenants-migrations');
+
+        if ($this->persistent()) {
+            $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+            if (filled(config('ses-tenants.events.path'))) {
+                $this->loadRoutesFrom(__DIR__.'/../routes/events.php');
+            }
+
+            if ($this->app->runningInConsole()) {
+                $this->commands([CheckDomainsCommand::class, ReleaseOrphansCommand::class, SyncTenantsCommand::class, PauseCommand::class, ResumeCommand::class, WarmupCommand::class]);
+            }
+        }
 
         Mail::extend('ses-tenants', fn (array $config) => $this->app->make(TransportFactory::class)->make($config));
+    }
+
+    private function persistent(): bool
+    {
+        return (bool) $this->app->make('config')->get('ses-tenants.persistence.enabled');
     }
 
     /**
