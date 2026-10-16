@@ -411,7 +411,7 @@ class SendingDomains
      * The owner's SES tenant has no use once its last domain is gone. Failing to delete it is harmless (an empty tenant sends
      * nothing, and the next domain re-uses it).
      */
-    private function releaseTenantIfUnused(SendingDomain $record): void
+    public function releaseTenantIfUnused(SendingDomain $record): void
     {
         if (SendingDomain::query()->where('owner_type', $record->owner_type)->where('owner_id', $record->owner_id)->exists()) {
             return;
@@ -421,7 +421,7 @@ class SendingDomains
         $name === null || $this->forgetTenant($name);
     }
 
-    private function forgetTenant(string $tenantName): void
+    public function forgetTenant(string $tenantName): void
     {
         try {
             $this->identities->deleteTenant($tenantName);
