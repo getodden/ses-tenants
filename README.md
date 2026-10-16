@@ -120,7 +120,7 @@ app(\Odden\SesTenants\Sns\SnsVerifier::class)->verify($request->json()->all()); 
 
 - **Chain validation depends on the certificate's own CA Issuers address**, fetched only from `amazontrust.com` and `digicert.com` hosts. A chain that cannot be built is refused.
 - **Tested against mocked SES and one real SNS certificate**, not a full production account. It runs in production at [Odden Cloud](https://odden.io).
-- The persistence layer is tested on SQLite with a fake SES; run your own migrations check on PostgreSQL or MySQL before relying on it.
+- The persistence layer is tested with a fake SES on SQLite, PostgreSQL and MariaDB (`SES_TESTS_DB=pgsql vendor/bin/pest`), not against a real account.
 - One owner model per application (`persistence.owner_model`).
 
 ## License
