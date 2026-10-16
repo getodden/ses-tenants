@@ -18,6 +18,9 @@ use Symfony\Component\Mailer\Transport\TransportInterface;
  */
 final class TransportFactory
 {
+    /** @var (\Closure(array<string, mixed>): TransportInterface)|null Replaces the transport built from SES, for tests. */
+    public static ?\Closure $transportOverride = null;
+
     public function __construct(private readonly Container $container) {}
 
     /**
@@ -25,6 +28,10 @@ final class TransportFactory
      */
     public function make(array $config): TransportInterface
     {
+        if (self::$transportOverride !== null) {
+            return (self::$transportOverride)($config);
+        }
+
         $client = $this->container->make(SesV2Client::class);
         $configurationSet = $this->container->make(Repository::class)->get('ses-tenants.configuration_set');
 
